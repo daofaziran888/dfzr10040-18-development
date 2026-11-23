@@ -81,5 +81,28 @@ npm run dev
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
 
+## 来源血缘批量撤边
+
+血缘只随构建追加，`lineage_edge` 通用资源接口负责单条血缘边的查询与动作；
+按来源贡献的批量撤除工作流由独立服务与路由承载：
+
+- 领域服务：`backend/app/services/lineage_withdrawal.py`
+- 专用路由：`/api/lineage-withdrawal/*`（见 `app/routers/lineage_withdrawal.py`）
+- 前端工作台：侧边栏「来源血缘撤边」（`LineageWithdrawalView.vue`）
+
+核心规则：
+
+- `POST /withdrawals` 一次提交多选来源贡献，逐条出具撤边回执
+  （已撤除 / 重复撤除 / 贡献不存在）；同一「来源 + 贡献清单」请求指纹重复提交
+  不会重复撤边，库存只处理一次。
+- 撤边后按字段血缘评估资格：仍有已确认来源为「有资格」、剩余来源待核为「待核」
+  （不能当成无来源）、失去全部有效来源为「已阻断」（禁止按旧血缘确认新计算）。
+- `POST /claims` 指标调度凭回执领取实际失效/重算范围，领取动作幂等；
+  待核来源经 `POST /sources/{source}/confirm` 确认后补发「重算就绪」事件。
+- `POST /exports` 通过分区快照导出取数时仍有资格的字段结果；阻断/待核字段
+  保留旧发布值但标记「阻断 / 只读留档」，并带回阻断原因与发布时取数依据。
+- 测试：`backend/tests/test_lineage_withdrawal.py`（HTTP 冒烟依赖 httpx，
+  缺失时自动跳过，领域测试不受影响）。
+
 领域：数据工程
 子方向：数仓与数据湖
